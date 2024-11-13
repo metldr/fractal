@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>Mandeltest</title>
+		<style>
+			* {background-color: #000; color: #EEF; font-size: 20px; font-family: monospace; margin: 0px; padding: 0px;}
+			#panel {display: inline-block; vertical-align: top;}
+			#canvas {border: #FFF solid 1px; width: 750px; height: 750px; image-rendering: optimizeSpeed;}
+		</style>
+	</head>
+	<body>
+		<canvas id="canvas"></canvas><div id="panel"><div id="info"></div><br>Step X: <input id="step-x" type="number" value="1"></input><br>Step Y: <input id="step-y" type="number" value="1"></input><br>Step Z: <input id="step-z" type="number" value="1"></input></div>
+		<script>
+			const DOMCanvas = document.getElementById("canvas"),
+				  DOMStepX = document.getElementById("step-x"),
+				  DOMStepY = document.getElementById("step-y"),
+				  DOMStepZ = document.getElementById("step-z");
+
+			const context = DOMCanvas.getContext("2d");
+			
+			let user_x = -1/2,
+				user_y = 0,
+				user_z = 500,
+				user_z_inverse = 1/user_z,
+				iteration = 1500,
+				bailout = 16777216;
+		
+			let step_x = 1,
+				step_y = 1,
+				step_z = 10;
+			
+			const CANVAS_WIDTH  = 2048,
+				  CANVAS_HEIGHT = 2048,
+				  CANVAS_HALF_WIDTH  = CANVAS_WIDTH  * .5,
+				  CANVAS_HALF_HEIGHT = CANVAS_HEIGHT * .5,
+				  CANVAS_AREA   = CANVAS_WIDTH * CANVAS_HEIGHT;
+				
+			canvas.width  = CANVAS_WIDTH,
+			canvas.height = CANVAS_HEIGHT;
+			
+			const image_data = new ImageData(CANVAS_WIDTH, CANVAS_HEIGHT);
+
+			const square_complex = (a, b) => [a*a-b*b, 2*a*b];
+			const multiply_complex = (a, b, c, d) => [a*c - b*d, a*d + b*c];
+			const divide_complex = (a, b, c, d) => {
+				let t = c*c + d*d;
+				return [(a*c + b*d)/t, (b*c - a*d)/t];
+			};
+			const inverse_complex = (a, b) => {
+				let t = a*a + b*b;
+				return [a/t, -b/t];
+			};
+			const     sine_complex = (a, b) => [Math.sin(a)*Math.cosh(b),  Math.cos(a)*Math.sinh(b)];
+			const   cosine_complex = (a, b) => [Math.cos(a)*Math.cosh(b), -Math.sin(a)*Math.sinh(b)];
+			const  tangent_complex = (a, b) => {
+				let sa = Math.sin(a),
+					ca = Math.cos(a),
+					sb = Math.sinh(b),
+					cb = Math.cosh(b),
+					t = ca * cb + sa * sb;
+				return [sa * cb / t, ca * sb / t];
+			};
+			const    hsine_complex = (a, b) => [Math.sinh(a)*Math.cos(b),  Math.cosh(a)*Math.sin(b)];
+			const  hcosine_complex = (a, b) => [Math.cosh(a)*Math.cos(b), -Math.sinh(a)*Math.sin(b)];
+			const htangent_complex = (a, b) => {
+				let sr = Math.sinh(a),
+					cr = Math.cosh(a),
+					sc = Math.sinh(b),
+					cc = Math.cosh(b),
+					t = cr * cr + cc * cc;
+				return [sr * cc / t, sc * cr / t];
+			};
+			const   power_complex = (a, b, c, d) => {
+				let r = Math.sqrt(a * a + b * b),
+					t = Math.atan2(b, a),
+					e = (r ** c) * Math.exp(-d * t),
+					te = c * t + d * Math.log(r);
+				return [e * Math.cos(te), e * Math.sin(te)];
+			};
+			const     log_complex = (a, b) => [Math.log(Math.sqrt(a * a + b * b)), Math.atan2(b, a)];
+
+			const sleep = async ms => new Promise(r=>setTimeout(r,ms));
+			const log = s => (document.getElementById("info").innerHTML = `X:${user_x}<br>Y:${user_y}<br>Z:${user_z}<br><br>Iterations:${iteration}<br>${s}`);
+
+			async function render() {
+
+				document.getElementById("info").innerHTML = `X:${user_x}<br>Y:${user_y}<br>Z:${user_z}<br><br>Iterations:${iteration}<br>Computing...`;
+
+				image_data.data.fill(0);
+				log("Computing...");
+				await sleep(125);
+
+				for (let i = 0, r, c, tr, tc, x, y, D = image_data.data, L = CANVAS_AREA*4; i < L; i+=4) {
+					
+					x = (i >> 2) % CANVAS_WIDTH,
+					y = (i >> 2) / CANVAS_WIDTH | 0;
+					
+					dx = (x - CANVAS_HALF_WIDTH  + user_x * user_z) * user_z_inverse,
+					r = dx,
+					
+					dy = (y - CANVAS_HALF_HEIGHT + user_y * user_z) * user_z_inverse,
+					c = dy;
+					
+					for (let j = 1; j < iteration; j++) {
+	
+						[r, c] = square_complex(r, c);
+					  [r, c] = [r+dx, c+dy];
+
+						if (r * r + c * c > bailout) {
+
+							D[i  ] = (Math.sin((j*.75 - 31) * .05) + 1) * 128,
+							D[i+1] = (Math.sin((j*.75 - 15) * .05) + 1) * 128,
+							D[i+2] = (Math.sin((j*.75 -  3) * .05) + 1) * 128;
+							break;
+						}
+					}
+					
+					if (i % (L >> 5) === 0) {
+					
+						let percent = i/L*100|0;
+						log(`Computing... ${percent}%<br>${"#".repeat(percent>>1)}${".".repeat(100-percent>>1)}`);
+						await sleep(1);
+					}
+
+					D[i+3] = 255;
+				}
+				log("Done.");
+				
+				context.putImageData(image_data, 0, 0);
+			}
+			
+			DOMStepX.addEventListener("keyup", e => {
+			
+				step_x = +e.target.value;
+			});
+			
+			DOMStepY.addEventListener("keyup", e => {
+			
+				step_y = +e.target.value;
+			});
+			
+			DOMStepZ.addEventListener("keyup", e => {
+			
+				step_z = +e.target.value;
+			});
+			
+			window.addEventListener("keypress", e => { // TODO iteration
+				
+				//console.log(e);
+				if (e.charCode === 43) { //  Numpad + Zoom+
+					
+					user_z += step_z;
+					user_z_inverse = 1/user_z;
+					render();
+				}
+				else if (e.charCode === 45) { //  Numpad - Zoom-
+					
+					user_z -= step_z;
+					user_z_inverse = 1/user_z;
+					render();
+				}
+				else if (e.charCode === 56) { //  Numpad 8 Up
+					
+					user_y -= step_y / user_z;
+					render();
+				}
+				else if (e.charCode === 50) { //  Numpad 2 Down
+					
+					user_y += step_y / user_z;
+					render();
+				}
+				else if (e.charCode === 54) { //  Numpad 6 Right
+					
+					user_x += step_x / user_z;
+					render();
+				}
+				else if (e.charCode === 52) { //  Numpad 4 Left
+					
+					user_x -= step_x / user_z;
+					render();
+				}
+				else if (e.charCode === 55) { //  Numpad 7 Manuel render
+					
+					render();
+				}
+			});
+
+			render();
+		</script>
+	</body>
+</html>
